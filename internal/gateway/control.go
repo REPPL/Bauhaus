@@ -95,7 +95,7 @@ func loopbackOnly(next http.Handler) http.Handler {
 		}
 		if !isLoopbackHost(r.Host) {
 			writeError(w, http.StatusForbidden,
-				"unrecognised Host header — the control panel only answers to localhost")
+				"unrecognized Host header — the control panel only answers to localhost")
 			return
 		}
 		if origin := r.Header.Get("Origin"); origin != "" && !isLoopbackOrigin(origin) {
