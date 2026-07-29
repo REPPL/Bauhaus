@@ -190,10 +190,13 @@ const redacted = "********"
 // Endpoints lists the base URLs clients can point at.
 func Endpoints(cfg config.Config) []string {
 	var out []string
-	if h := hostname(); h != "" {
-		out = append(out, fmt.Sprintf("http://%s.local:%d/v1", h, cfg.Port))
-	}
 	if cfg.ExposedToLAN() {
+		// The .local name resolves to LAN addresses, so a loopback-only bind
+		// must not advertise it: the menu bar shows the first entry as the
+		// endpoint, and it would be one the server never answers on.
+		if h := hostname(); h != "" {
+			out = append(out, fmt.Sprintf("http://%s.local:%d/v1", h, cfg.Port))
+		}
 		for _, ip := range lanIPs() {
 			out = append(out, fmt.Sprintf("http://%s:%d/v1", ip, cfg.Port))
 		}
