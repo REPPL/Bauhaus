@@ -51,7 +51,10 @@ die() {
 [ "$(uname -s)" = "Darwin" ] || die "Bauhaus is macOS only."
 
 # The server needs Apple Silicon (MLX runs on Metal). The client is universal.
-if [ "$mode" = "server" ] && [ "$(uname -m)" != "arm64" ]; then
+# `uname -m` reports x86_64 in a Rosetta-translated shell (common with x86_64
+# Homebrew), so also ask the kernel whether the hardware is Apple Silicon.
+if [ "$mode" = "server" ] && [ "$(uname -m)" != "arm64" ] &&
+	[ "$(sysctl -n hw.optional.arm64 2>/dev/null)" != "1" ]; then
 	die "the Bauhaus server needs Apple Silicon (this Mac is $(uname -m)). The BauhausChat client is universal: rerun with 'client'."
 fi
 
