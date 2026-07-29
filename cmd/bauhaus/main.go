@@ -248,9 +248,13 @@ func panelURL(cfg config.Config) string {
 	return fmt.Sprintf("http://localhost:%d/", cfg.Port)
 }
 
-// openBrowser opens the control panel.
+// openBrowser opens the control panel. Reap the child in the background: a
+// Start without Wait leaves one zombie per menu click for the app's lifetime.
 func openBrowser(url string) {
-	exec.Command("open", url).Start()
+	cmd := exec.Command("open", url)
+	if cmd.Start() == nil {
+		go cmd.Wait()
+	}
 }
 
 // withLogging logs API requests but not the noisy static-asset and polling ones.
