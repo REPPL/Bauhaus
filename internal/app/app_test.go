@@ -137,6 +137,47 @@ func TestFailedDownloadIsMarkedFailedWithReason(t *testing.T) {
 	}
 }
 
+func TestFailedRedownloadKeepsReadyModelServable(t *testing.T) {
+	a := newTestApp(t)
+	hub := fakeHub(t)
+	a.Hub.BaseURL = hub.URL
+
+	if err := a.Download("org/repo"); err != nil {
+		t.Fatalf("Download: %v", err)
+	}
+	waitFor(t, "the model to become ready", func() bool {
+		m, err := a.Registry.Get("org/repo")
+		return err == nil && m.Ready()
+	})
+
+	// Re-download the same model against a dead hub: the attempt fails before
+	// a byte moves, but the files on disk are still the intact ready model.
+	broken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "gone", http.StatusNotFound)
+	}))
+	defer broken.Close()
+	a.Hub.BaseURL = broken.URL
+
+	if err := a.Download("org/repo"); err != nil {
+		t.Fatalf("Download: %v", err)
+	}
+	waitFor(t, "the failed attempt to settle", func() bool {
+		m, err := a.Registry.Get("org/repo")
+		return err == nil && m.State != registry.StateDownloading
+	})
+
+	m, err := a.Registry.Get("org/repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.State != registry.StateReady {
+		t.Errorf("state = %q, want ready: a failed re-download must not demote an intact model", m.State)
+	}
+	if m.Bytes == 0 {
+		t.Error("restored model must keep a non-zero recorded size")
+	}
+}
+
 func TestCancelDownload(t *testing.T) {
 	a := newTestApp(t)
 	stall := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

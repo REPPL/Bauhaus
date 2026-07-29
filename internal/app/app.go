@@ -215,6 +215,11 @@ func (a *App) Download(repoID string) error {
 	a.dlMu.Unlock()
 
 	dest := a.Paths.ModelDir(repoID)
+	// Remember whether a ready model is already being served from dest: a
+	// failed re-download must not take it away (downloads stage into .part
+	// files, so the served files stay intact until each one completes).
+	prior, priorErr := a.Registry.Get(repoID)
+	wasReady := priorErr == nil && prior.State == registry.StateReady
 	if err := a.Registry.Put(registry.Model{
 		RepoID: repoID,
 		Path:   dest,
@@ -275,16 +280,44 @@ func (a *App) Download(repoID string) error {
 		case errors.Is(err, context.Canceled):
 			// A cancelled download leaves .part files behind on purpose: they let
 			// the next attempt resume instead of starting over.
-			a.Registry.SetState(repoID, registry.StateFailed, 0, "cancelled")
-			a.Log.Info("download cancelled", "model", repoID)
+			if a.restoreReady(repoID, dest, wasReady) {
+				a.Log.Info("download cancelled; the ready model is untouched", "model", repoID)
+			} else {
+				a.Registry.SetState(repoID, registry.StateFailed, 0, "cancelled")
+				a.Log.Info("download cancelled", "model", repoID)
+			}
 
 		default:
-			a.Registry.SetState(repoID, registry.StateFailed, 0, err.Error())
-			a.Log.Error("download failed", "model", repoID, "err", err)
+			if a.restoreReady(repoID, dest, wasReady) {
+				a.Log.Warn("download failed; the ready model is untouched", "model", repoID, "err", err)
+			} else {
+				a.Registry.SetState(repoID, registry.StateFailed, 0, err.Error())
+				a.Log.Error("download failed", "model", repoID, "err", err)
+			}
 		}
 	}()
 
 	return nil
+}
+
+// restoreReady puts a model back into the ready state after a failed or
+// cancelled download attempt, provided it was ready before the attempt and its
+// files still validate. It reports whether the model was restored.
+func (a *App) restoreReady(repoID, dest string, wasReady bool) bool {
+	if !wasReady || validateModelDir(dest) != nil {
+		return false
+	}
+	if perr := a.Registry.Put(registry.Model{
+		RepoID:   repoID,
+		Path:     dest,
+		Bytes:    dirSize(dest),
+		State:    registry.StateReady,
+		Progress: 100,
+	}); perr != nil {
+		a.Log.Error("could not restore the ready model record", "model", repoID, "err", perr)
+		return false
+	}
+	return true
 }
 
 func (a *App) finishDownload(repoID string) {
