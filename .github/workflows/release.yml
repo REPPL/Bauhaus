@@ -81,7 +81,7 @@ jobs:
         run: go test -race ./...
 
       - name: Build the server app (Bauhaus.app, arm64, ad-hoc signed)
-        run: make app
+        run: make app VERSION="$TAG"
 
       - name: Build the client app (BauhausChat.app, universal)
         run: client/build.sh

@@ -21,10 +21,12 @@ vet:
 lint: fmt vet test
 
 ## build: the plain binary. LDFLAGS is empty for dev builds (keeps debug symbols
-## for delve); the app/release build overrides it to strip.
+## for delve); the app/release build overrides it to strip. VERSION is stamped
+## into `bauhaus -version`; the release workflow passes the tag explicitly.
 LDFLAGS ?=
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 build:
-	go build -ldflags "$(LDFLAGS)" -o $(BIN) $(PKG)
+	go build -ldflags "$(LDFLAGS) -X main.version=$(VERSION)" -o $(BIN) $(PKG)
 
 ## app: a real .app bundle (menu-bar app, LAN + Bonjour entitlements).
 ## Strips debug info (-s -w): a distributed binary needs no DWARF, and it roughly
@@ -34,6 +36,9 @@ app: build icon
 	rm -rf $(BUNDLE)
 	mkdir -p $(BUNDLE)/Contents/MacOS $(BUNDLE)/Contents/Resources
 	cp build/Info.plist $(BUNDLE)/Contents/Info.plist
+	# Stamp the bundle version (VERSION without a leading v) so Finder's Get
+	# Info matches what the binary reports, before the bundle is signed.
+	/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $(patsubst v%,%,$(VERSION))" $(BUNDLE)/Contents/Info.plist
 	cp $(BIN)           $(BUNDLE)/Contents/MacOS/bauhaus
 	cp build/AppIcon.icns $(BUNDLE)/Contents/Resources/AppIcon.icns
 	# A stable signing identifier matters: Go's linker ad-hoc-signs every binary

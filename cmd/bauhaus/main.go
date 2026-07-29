@@ -29,6 +29,10 @@ import (
 	"github.com/areppel/bauhaus/internal/ui"
 )
 
+// version is stamped by the Makefile via -ldflags "-X main.version=…"; a
+// build outside make reports "dev".
+var version = "dev"
+
 func main() {
 	var (
 		headless = flag.Bool("headless", false, "run without the menu bar icon (for launchd)")
@@ -38,7 +42,7 @@ func main() {
 	flag.Parse()
 
 	if *showVer {
-		fmt.Println("bauhaus 1.0")
+		fmt.Println("bauhaus " + version)
 		return
 	}
 
