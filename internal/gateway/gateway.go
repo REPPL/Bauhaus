@@ -203,7 +203,7 @@ func (g *Gateway) handleCompletions(w http.ResponseWriter, r *http.Request) {
 
 	// Decode into raw messages, not a fully-materialised map: the gateway only
 	// rewrites the "model" field, so parsing the entire prompt (the messages array
-	// can be hundreds of KB) into Go values and re-serialising it is wasted CPU and
+	// can be hundreds of KB) into Go values and re-serializing it is wasted CPU and
 	// garbage on the request's critical path. RawMessage keeps every other field as
 	// the original bytes, copied through once.
 	var payload map[string]json.RawMessage
