@@ -3,7 +3,7 @@ BUNDLE  := dist/$(APP).app
 BIN     := bin/bauhaus
 PKG     := ./cmd/bauhaus
 
-.PHONY: all test build app install run clean fmt vet lint
+.PHONY: all test build app icon install run clean fmt vet lint allow-firewall install-shared
 
 all: test build
 
@@ -103,5 +103,9 @@ install-shared:
 run: build
 	$(BIN) -headless
 
+## clean removes build outputs only. build/AppIcon.icns is a committed asset
+## whose 1024px source PNG is deliberately not in the repo (see .gitignore), so
+## deleting it would break `make app` on every machine but the one holding the
+## source art.
 clean:
-	rm -rf bin dist build/AppIcon.icns build/AppIcon.iconset
+	rm -rf bin dist build/AppIcon.iconset
