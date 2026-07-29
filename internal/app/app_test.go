@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -158,8 +159,15 @@ func TestFailedRedownloadKeepsReadyModelServable(t *testing.T) {
 	defer broken.Close()
 	a.Hub.BaseURL = broken.URL
 
-	if err := a.Download("org/repo"); err != nil {
-		t.Fatalf("Download: %v", err)
+	// The ready record lands just before the first download deregisters, so a
+	// second attempt in that window is refused as already downloading; retry.
+	var dlErr error
+	waitFor(t, "the re-download to start", func() bool {
+		dlErr = a.Download("org/repo")
+		return !errors.Is(dlErr, ErrAlreadyDownloading)
+	})
+	if dlErr != nil {
+		t.Fatalf("Download: %v", dlErr)
 	}
 	waitFor(t, "the failed attempt to settle", func() bool {
 		m, err := a.Registry.Get("org/repo")
