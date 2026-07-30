@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -576,6 +577,37 @@ func TestRescanPromotesFailedModelOnceDirComplete(t *testing.T) {
 	}
 	if m.Err != "" {
 		t.Errorf("promotion should clear the stale error, got %q", m.Err)
+	}
+}
+
+// In the shared cache another account can plant a FIFO (or a symlink to one)
+// under a manifest name. Opening it for the completeness check would block
+// until a writer appears — never, for a hostile plant — wedging the startup
+// rescan for every account. Rescan must skip it and finish.
+func TestRescanDoesNotBlockOnFIFOManifest(t *testing.T) {
+	r, dir := newTestRegistry(t)
+	models := filepath.Join(dir, "models")
+	md := filepath.Join(models, "org", "hostile")
+	if err := os.MkdirAll(md, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(filepath.Join(md, "config.json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(md, "model.safetensors"), []byte("weights"), 0o644)
+
+	done := make(chan error, 1)
+	go func() { done <- r.Rescan(models) }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Rescan: %v", err)
+		}
+	case <-timeoutAfterSeconds(5):
+		t.Fatal("Rescan blocked on a FIFO planted as config.json")
+	}
+	if _, err := r.Get("org/hostile"); !errors.Is(err, ErrNotFound) {
+		t.Error("a directory whose config.json is not a regular file must not be adopted")
 	}
 }
 

@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/areppel/bauhaus/internal/config"
@@ -518,13 +519,24 @@ func inspectModelDir(dir string) (complete bool, size int64) {
 const maxManifestJSON = 8 << 20
 
 // readManifest reads a capped JSON file from dir into v. It reports false when
-// the file is missing, oversized, or not valid JSON.
+// the file is missing, not a regular file, oversized, or not valid JSON.
+//
+// In the shared cache another account can plant a FIFO — or a symlink to one —
+// under a manifest name, and a plain Open would block until a writer appears,
+// wedging the startup rescan for every account. Opening with O_NONBLOCK makes
+// the open itself unblockable, and the fstat on the opened handle (not the
+// path, so a swap between check and open cannot be raced in) refuses anything
+// but a regular file before any read.
 func readManifest(dir, name string, v any) bool {
-	f, err := os.Open(filepath.Join(dir, name))
+	f, err := os.OpenFile(filepath.Join(dir, name), os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return false
 	}
 	defer f.Close()
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return false
+	}
 	b, err := io.ReadAll(io.LimitReader(f, maxManifestJSON+1))
 	if err != nil || int64(len(b)) > maxManifestJSON {
 		return false
@@ -565,14 +577,16 @@ func shardsPresent(dir string) bool {
 	for _, shard := range index.WeightMap {
 		// A shard entry that is not a plain filename is not something the
 		// downloader would have produced; refuse to attest completeness.
-		if shard == "" || shard != filepath.Base(shard) {
+		// (filepath.Base passes "." and ".." through, so name them explicitly.)
+		if shard == "" || shard == "." || shard == ".." || shard != filepath.Base(shard) {
 			return false
 		}
 		if seen[shard] {
 			continue
 		}
 		seen[shard] = true
-		if _, err := os.Stat(filepath.Join(dir, shard)); err != nil {
+		info, err := os.Stat(filepath.Join(dir, shard))
+		if err != nil || !info.Mode().IsRegular() {
 			return false
 		}
 	}
