@@ -1,7 +1,7 @@
 ---
 schema_version: 1
 id: "iss-9"
-slug: "release-workflow-ships-any-v-tag-as-a-full-release-rc-tags-ca"
+slug: "release-workflow-ships-any-v-tag-as-a-full-release-rc-tags"
 severity: "minor"
 category: "bug"
 source: "agent-finding"
