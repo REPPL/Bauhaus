@@ -611,6 +611,31 @@ func TestRescanDoesNotBlockOnFIFOManifest(t *testing.T) {
 	}
 }
 
+// A symlinked manifest is never something the downloader wrote; following it
+// would probe files outside the model directory with this account's
+// privileges. The completeness check must refuse it.
+func TestRescanDoesNotFollowSymlinkedManifest(t *testing.T) {
+	r, dir := newTestRegistry(t)
+	models := filepath.Join(dir, "models")
+	md := filepath.Join(models, "org", "linked")
+	if err := os.MkdirAll(md, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(dir, "outside-config.json")
+	os.WriteFile(outside, []byte(`{"model_type":"test"}`), 0o644)
+	if err := os.Symlink(outside, filepath.Join(md, "config.json")); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(md, "model.safetensors"), []byte("weights"), 0o644)
+
+	if err := r.Rescan(models); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Get("org/linked"); !errors.Is(err, ErrNotFound) {
+		t.Error("a directory whose config.json is a symlink must not be adopted")
+	}
+}
+
 func timeoutAfterSeconds(n int) <-chan time.Time {
 	return time.After(time.Duration(n) * time.Second)
 }

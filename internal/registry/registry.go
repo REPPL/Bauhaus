@@ -524,11 +524,14 @@ const maxManifestJSON = 8 << 20
 // In the shared cache another account can plant a FIFO — or a symlink to one —
 // under a manifest name, and a plain Open would block until a writer appears,
 // wedging the startup rescan for every account. Opening with O_NONBLOCK makes
-// the open itself unblockable, and the fstat on the opened handle (not the
-// path, so a swap between check and open cannot be raced in) refuses anything
-// but a regular file before any read.
+// the open itself unblockable, O_NOFOLLOW refuses symlinks outright (the
+// downloader only ever writes manifests as regular files, and following a
+// link would probe files outside the model directory with this account's
+// privileges), and the fstat on the opened handle (not the path, so a swap
+// between check and open cannot be raced in) refuses anything but a regular
+// file before any read.
 func readManifest(dir, name string, v any) bool {
-	f, err := os.OpenFile(filepath.Join(dir, name), os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	f, err := os.OpenFile(filepath.Join(dir, name), os.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		return false
 	}
