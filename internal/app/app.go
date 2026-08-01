@@ -223,7 +223,7 @@ func (a *App) Download(repoID string) error {
 	prior, priorErr := a.Registry.Get(repoID)
 	wasReady := priorErr == nil && prior.State == registry.StateReady
 	// A retry or re-download of a known repo must keep its original AddedAt;
-	// only a genuinely new repo gets Put's zero-value-defaults-to-now behaviour.
+	// only a genuinely new repo gets Put's zero-value-defaults-to-now behavior.
 	addedAt := time.Time{}
 	if priorErr == nil {
 		addedAt = prior.AddedAt
