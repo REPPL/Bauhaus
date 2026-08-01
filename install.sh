@@ -127,7 +127,8 @@ cp -R "$tmp/extract/$APP.app" /Applications/
 
 if [ "$mode" = "client" ]; then
 	echo "Installed /Applications/$APP.app."
-	echo "Open it, then point it at your Bauhaus server's address (the server's Connect tab shows it)."
+	echo "Open it, then point it at your Bauhaus server: the address from the server's Connect tab"
+	echo "without the trailing /v1 (BauhausChat adds the path itself)."
 	open "/Applications/$APP.app"
 	exit 0
 fi
