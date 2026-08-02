@@ -192,6 +192,17 @@ func (p *Pool) Acquire(ctx context.Context, repoID string) (*Upstream, func(), e
 		p.mu.Lock()
 		e.inFlight--
 		e.lastUsed = p.opts.now()
+		// evictForLocked refuses to evict an entry that is still loading (see
+		// its isReady guard), so a caller giving up mid-load must not leave
+		// the entry to sit there instead: with nobody left to wait for it,
+		// that would pin its full share of the memory budget, unkillable,
+		// for up to ReadyTimeout — one abandoned request against a large
+		// model could deny every other model from loading for minutes. Tear
+		// it down the moment the last waiter is gone. The identity check
+		// guards against a load that already failed and removed itself.
+		if e.inFlight == 0 && !isReady(e) && p.entries[e.repoID] == e {
+			p.stopEntryLocked(e)
+		}
 		p.mu.Unlock()
 	}
 

@@ -47,12 +47,16 @@ type Launcher interface {
 	Launch(ctx context.Context, spec Spec) (Process, error)
 }
 
-// LaunchError wraps a Launcher.Launch failure. Its message can embed absolute
-// local filesystem paths (the venv interpreter, the model directory, the log
-// file) rooted under the serving account's home directory, so callers that
-// relay pool errors to the network must not forward it verbatim — the
-// gateway matches on this type to log the detail server-side and return a
-// generic message instead.
+// LaunchError wraps a Launcher.Launch failure — the process failing to start
+// at all. Its message can embed absolute local filesystem paths (the venv
+// interpreter, the model directory, the log file) rooted under the serving
+// account's home directory, so callers that relay pool errors to the network
+// must not forward it verbatim — the gateway matches on this type to log the
+// detail server-side and return a generic message instead. It does not cover
+// a readiness failure once the process has started (Pool.waitReady's
+// readyErr): that error currently carries no local-path detail, since it
+// comes from the process's own exit status or a readiness-probe timeout, not
+// from Launch.
 type LaunchError struct {
 	Err error
 }
