@@ -515,6 +515,55 @@ func TestEvictsLRUModelWhenBudgetExceeded(t *testing.T) {
 	}
 }
 
+// A model still loading must never be picked as an eviction victim: its sole
+// caller can already have given up (context cancelled or timed out) and
+// dropped inFlight to 0 while the load keeps running in the background.
+// Killing it there wastes the in-progress load and — under sustained memory
+// pressure with client timeouts shorter than the load — can livelock the
+// pool, since every model would be evicted the moment its lone waiter gives
+// up, before it ever finishes loading.
+func TestLoadingModelIsNotEvictedAfterItsWaiterGivesUp(t *testing.T) {
+	l := newFakeLauncher()
+	l.loadDelay = 200 * time.Millisecond
+	src := &fakeSource{models: map[string]int64{"org/a": 100, "org/b": 100}}
+	// loadCost is 1.2x, so 100 bytes costs 120. A 200-byte budget fits exactly one.
+	p := newTestPool(t, l, src, PoolOptions{MaxResidentBytes: 200})
+
+	// org/a's caller gives up well before the (slow, simulated) load finishes.
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	_, _, err := p.Acquire(ctx, "org/a")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Acquire org/a: got %v, want context.DeadlineExceeded", err)
+	}
+
+	// org/a is still loading in the background (inFlight is back to 0, but its
+	// ready channel is still open) when org/b needs the only slot the budget
+	// allows.
+	_, _, err = p.Acquire(context.Background(), "org/b")
+	if err == nil {
+		t.Fatal("expected an error: org/a is not a legal eviction victim while it is still loading")
+	}
+	if !strings.Contains(err.Error(), "memory") {
+		t.Errorf("error should explain the memory pressure, got: %v", err)
+	}
+
+	// org/a's process must never have been torn down mid-load.
+	proc := l.procFor("org/a")
+	select {
+	case <-proc.stopped:
+		t.Fatal("the still-loading model was evicted and killed mid-load")
+	default:
+	}
+
+	// Once the load actually finishes, org/a is a normal resident model.
+	time.Sleep(l.loadDelay + 100*time.Millisecond)
+	res := p.Resident()
+	if len(res) != 1 || res[0].RepoID != "org/a" {
+		t.Errorf("org/a should be resident once its load completes: %v", res)
+	}
+}
+
 // Eviction must never kill a model that is mid-request.
 func TestInFlightModelIsNotEvicted(t *testing.T) {
 	l := newFakeLauncher()
