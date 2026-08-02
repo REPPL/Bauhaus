@@ -47,6 +47,19 @@ type Launcher interface {
 	Launch(ctx context.Context, spec Spec) (Process, error)
 }
 
+// LaunchError wraps a Launcher.Launch failure. Its message can embed absolute
+// local filesystem paths (the venv interpreter, the model directory, the log
+// file) rooted under the serving account's home directory, so callers that
+// relay pool errors to the network must not forward it verbatim — the
+// gateway matches on this type to log the detail server-side and return a
+// generic message instead.
+type LaunchError struct {
+	Err error
+}
+
+func (e *LaunchError) Error() string { return e.Err.Error() }
+func (e *LaunchError) Unwrap() error { return e.Err }
+
 // ExecLauncher runs the real `mlx_lm.server` out of the managed virtualenv.
 type ExecLauncher struct {
 	Paths config.Paths
