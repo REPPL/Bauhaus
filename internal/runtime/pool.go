@@ -271,7 +271,7 @@ func (p *Pool) startLocked(repoID string) (*entry, error) {
 		DecodeConcurrency: p.opts.DecodeConcurrency,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("start model server for %s: %w", repoID, err)
+		return nil, fmt.Errorf("start model server for %s: %w", repoID, &LaunchError{Err: err})
 	}
 	e.proc = proc
 	p.entries[repoID] = e
@@ -406,7 +406,12 @@ func (p *Pool) evictForLocked(need int64) error {
 		// Evict the least recently used model that nobody is currently using.
 		var victim *entry
 		for _, e := range p.entries {
-			if e.inFlight > 0 {
+			// Never evict a model that is still loading: its lone waiter can have
+			// already given up (context cancelled or timed out) and dropped
+			// inFlight to 0 while waitReady keeps running in the background.
+			// Killing it here would waste the in-progress load; isReady checks
+			// without blocking. Same reasoning as reapIdle's guard below.
+			if e.inFlight > 0 || !isReady(e) {
 				continue
 			}
 			if victim == nil || e.lastUsed.Before(victim.lastUsed) {
