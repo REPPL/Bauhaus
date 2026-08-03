@@ -172,6 +172,14 @@ func (g *Gateway) handleListModels(w http.ResponseWriter, r *http.Request) {
 // ones keeps a hostile or buggy client from exhausting memory.
 const maxRequestBody = 32 << 20
 
+// maxResponseBody caps how much of a non-streaming completion response the
+// gateway buffers before rewriting and relaying it. max_tokens and logprobs
+// are client-controlled and unbounded, so a well-behaved upstream can still
+// be driven to a very large single-object response; without a cap the read
+// at relayRewritingModel's json branch grows memory without bound, the same
+// hazard maxRequestBody exists to prevent on the request side.
+const maxResponseBody = 64 << 20
+
 // bodyReadTimeout bounds how long a client may take to send its request body.
 // The server has no WriteTimeout (a generation legitimately streams for minutes),
 // which would otherwise leave a slow-uploading client holding a connection and a
@@ -305,15 +313,24 @@ func relayRewritingModel(w http.ResponseWriter, resp *http.Response, modelArg, r
 	case strings.HasPrefix(ct, "text/event-stream"):
 		streamRewriteSSE(w, resp.Body, modelArg, requested)
 	case strings.HasPrefix(ct, "application/json"):
-		// Non-streaming completions are a single bounded JSON object; buffering
-		// it is fine, and the Content-Length header is already dropped as
-		// hop-by-hop, so the length change is invisible to framing. A mid-read
-		// transport failure still leaves whatever bytes were read in body —
-		// write them (rewritten if they happen to parse) rather than dropping
-		// them, matching streamCopy's write-then-check-error behaviour below.
-		body, err := io.ReadAll(resp.Body)
+		// Non-streaming completions are a single JSON object; buffering it is
+		// fine as long as it stays within maxResponseBody, and the
+		// Content-Length header is already dropped as hop-by-hop, so a length
+		// change is invisible to framing. The status line and headers are
+		// already written by this point (see the caller), so an oversized
+		// body cannot be turned into an error response — reading is simply
+		// cut short, same as any other mid-read failure below. A mid-read
+		// transport failure or a cap hit still leaves whatever bytes were
+		// read in body — write them (rewritten if they happen to parse)
+		// rather than dropping them, matching streamCopy's
+		// write-then-check-error behaviour below.
+		body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBody+1))
+		tooLarge := len(body) > maxResponseBody
+		if tooLarge {
+			body = body[:maxResponseBody]
+		}
 		_, _ = w.Write(rewriteModelField(body, modelArg, requested))
-		if err != nil {
+		if err != nil || tooLarge {
 			return
 		}
 	default:

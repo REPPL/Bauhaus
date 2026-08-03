@@ -287,6 +287,34 @@ func TestStreamingResponseModelFieldIsNotTheBackendPath(t *testing.T) {
 	}
 }
 
+// max_tokens and logprobs are client-controlled and unbounded; a well-behaved
+// upstream honoring them can still produce a very large single-object
+// response. relayRewritingModel's json branch must not buffer past
+// maxResponseBody, mirroring the maxRequestBody cap on the request side.
+func TestNonStreamingResponseBodyIsCapped(t *testing.T) {
+	resp := &http.Response{
+		Header: http.Header{"Content-Type": []string{"application/json"}},
+		Body:   io.NopCloser(io.LimitReader(fillReader{}, maxResponseBody+1024)),
+	}
+	rec := httptest.NewRecorder()
+
+	relayRewritingModel(rec, resp, "backend-path", "requested-name")
+
+	if got := rec.Body.Len(); got > maxResponseBody {
+		t.Errorf("relayRewritingModel wrote %d bytes, want capped at maxResponseBody=%d", got, maxResponseBody)
+	}
+}
+
+// fillReader is an unbounded source of 'x' bytes.
+type fillReader struct{}
+
+func (fillReader) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = 'x'
+	}
+	return len(p), nil
+}
+
 // Clients (and many OpenAI-compatible UIs) often use the short model name.
 func TestGatewayAcceptsShortModelName(t *testing.T) {
 	srv, pool, _ := newTestGateway(t, config.Default())
