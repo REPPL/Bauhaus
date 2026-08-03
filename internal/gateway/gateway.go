@@ -339,29 +339,37 @@ func relayRewritingModel(w http.ResponseWriter, resp *http.Response, modelArg, r
 }
 
 // rewriteModelField returns b with a top-level "model" field equal to modelArg
-// replaced by requested. Anything that does not parse, or a model value other
-// than modelArg, passes through untouched — error bodies stay verbatim.
+// replaced by requested. modelArg is the backend's absolute --model path,
+// which in a per-user install contains the account's home directory and must
+// never reach a client; that invariant has to hold even when b cannot be
+// parsed as the expected shape (a truncated body — see maxResponseBody in the
+// caller — or one cut short by a genuine mid-read transport failure), so
+// every fallback below redacts a literal modelArg match instead of returning
+// b untouched. It is a no-op on any body that does not actually contain
+// modelArg, which is the common case for a real error body.
 func rewriteModelField(b []byte, modelArg, requested string) []byte {
+	redact := func() []byte { return bytes.ReplaceAll(b, []byte(modelArg), []byte(requested)) }
+
 	var payload map[string]json.RawMessage
 	if err := json.Unmarshal(b, &payload); err != nil {
-		return b
+		return redact()
 	}
 	raw, ok := payload["model"]
 	if !ok {
-		return b
+		return redact()
 	}
 	var m string
 	if err := json.Unmarshal(raw, &m); err != nil || m != modelArg {
-		return b
+		return redact()
 	}
 	rewritten, err := json.Marshal(requested)
 	if err != nil {
-		return b
+		return redact()
 	}
 	payload["model"] = rewritten
 	out, err := json.Marshal(payload)
 	if err != nil {
-		return b
+		return redact()
 	}
 	return out
 }
