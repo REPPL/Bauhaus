@@ -323,7 +323,7 @@ func relayRewritingModel(w http.ResponseWriter, resp *http.Response, modelArg, r
 		// transport failure or a cap hit still leaves whatever bytes were
 		// read in body — write them (rewritten if they happen to parse)
 		// rather than dropping them, matching streamCopy's
-		// write-then-check-error behaviour below.
+		// write-then-check-error behavior below.
 		body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBody+1))
 		tooLarge := len(body) > maxResponseBody
 		if tooLarge {
