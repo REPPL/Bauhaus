@@ -792,6 +792,23 @@ func TestLoopbackSameOriginRequestIsAllowed(t *testing.T) {
 	}
 }
 
+// With no key configured, the server is already unauthenticated by the user's
+// own explicit choice (iss-1) — the Origin check exists to protect a configured
+// key, so it must not restrict anything when there is no key to protect.
+func TestLoopbackWithNoKeyIgnoresForeignOrigin(t *testing.T) {
+	h := gatewayWithKey(t, "")
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.RemoteAddr = "127.0.0.1:5555"
+	req.Header.Set("Origin", "https://evil.example")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("loopback request with no key configured got %d, want 200 (no key means nothing to protect)", w.Code)
+	}
+}
+
 // The client's token is Bauhaus' business; the model server has no use for it.
 func TestClientTokenIsNotForwardedUpstream(t *testing.T) {
 	cfg := config.Default()
