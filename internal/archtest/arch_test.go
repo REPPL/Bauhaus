@@ -12,25 +12,18 @@ import (
 // If it leaks into internal/, the business logic can no longer be tested without
 // a display server, and the daemon can no longer run headless under launchd.
 func TestNoGUIToolkitInInternalPackages(t *testing.T) {
-	// Query the module's own internal packages (excluding this archtest package,
-	// which has no non-test files and so is not a build target).
+	// Enumerate the internal packages with a wildcard so a new package is
+	// covered the day it appears. Rooting the scan on every internal package
+	// matters: one imported only from test files (internal/mlxtest) or only by
+	// cmd/bauhaus (internal/ui) is in no other internal package's dependency
+	// closure and would escape a scan rooted anywhere narrower.
 	out, err := exec.Command("go", "list",
-		"github.com/areppel/bauhaus/internal/app",
-		"github.com/areppel/bauhaus/internal/config",
-		"github.com/areppel/bauhaus/internal/discovery",
-		"github.com/areppel/bauhaus/internal/gateway",
-		"github.com/areppel/bauhaus/internal/hub",
-		"github.com/areppel/bauhaus/internal/registry",
-		"github.com/areppel/bauhaus/internal/runtime",
-		"github.com/areppel/bauhaus/internal/ui",
+		"github.com/areppel/bauhaus/internal/...",
 	).CombinedOutput()
 	if err != nil {
 		t.Fatalf("go list: %v\n%s", err, out)
 	}
-	// Now list every listed package's full dependency set. Rooting the scan on
-	// the enumeration above keeps each internal package covered even when — like
-	// internal/ui, imported only by cmd/bauhaus — it is in no other internal
-	// package's dependency closure.
+	// Now list every listed package's full dependency set.
 	roots := strings.Fields(string(out))
 	out, err = exec.Command("go", append([]string{"list", "-deps"}, roots...)...).CombinedOutput()
 	if err != nil {
