@@ -80,7 +80,7 @@ func TestServiceHostIsALegalDNSLabel(t *testing.T) {
 		want string
 	}{
 		{"MacStudio", "bauhaus-macstudio"},
-		{"Alex's iMac", "bauhaus-alex-s-imac"},
+		{"Alice's iMac", "bauhaus-alice-s-imac"},
 		{"Mac-Pro-2", "bauhaus-mac-pro-2"},
 		{"", "bauhaus-host"},
 	}
